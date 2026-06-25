@@ -29,6 +29,18 @@ final class LockController: ObservableObject {
   private var hasLockedForCurrentAbsence = false
   private let lockRecheckInterval: TimeInterval = 2
 
+  // Tier A accuracy tuning.
+  /// dB the signal must recover above the away cutoff before re-arming as
+  /// present — asymmetric hysteresis to stop chatter around one threshold.
+  private let hysteresisMarginDB = 8
+  /// Consecutive away readings required before the grace countdown starts —
+  /// debounce so a single weak reading can't begin a lock.
+  private let awayConfirmReadings = 2
+  /// Sticky away/present decision within the hysteresis band.
+  private var lastReadingAway = false
+  /// Run of consecutive away readings (resets on any present reading).
+  private var consecutiveAwayReadings = 0
+
   init(settings: SettingsStore, locker: Locker, metrics: MetricsMonitor? = nil) {
     self.settings = settings
     self.locker = locker
@@ -88,8 +100,16 @@ final class LockController: ObservableObject {
     }
 
     let isAway = isAwayReading(rssi)
-    WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") reason=\(reason) away=\(isAway) state=\(state.title)")
     if isAway {
+      consecutiveAwayReadings += 1
+    } else {
+      consecutiveAwayReadings = 0
+    }
+    WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") reason=\(reason) away=\(isAway) run=\(consecutiveAwayReadings)/\(awayConfirmReadings) state=\(state.title)")
+
+    if isAway {
+      // Debounce: require N consecutive away readings before arming.
+      guard consecutiveAwayReadings >= awayConfirmReadings else { return }
       beginOrContinueLeaving(now: Date())
     } else {
       state = .present
@@ -97,19 +117,36 @@ final class LockController: ObservableObject {
     }
   }
 
+  /// Away decision on a calibrated RSSI cutoff (dBm) with asymmetric
+  /// hysteresis — steadier than a live meters estimate. RSSI is negative dBm
+  /// (weaker = more negative). Missing RSSI counts as away.
   private func isAwayReading(_ rssi: Int?) -> Bool {
-    guard let rssi else { return true }
+    guard let rssi else {
+      lastReadingAway = true
+      return true
+    }
 
+    let awayCutoff = awayCutoffRSSI()
+    if rssi <= awayCutoff {
+      lastReadingAway = true
+    } else if rssi >= awayCutoff + hysteresisMarginDB {
+      lastReadingAway = false
+    }
+    // Within the band, hold the previous decision (sticky).
+    return lastReadingAway
+  }
+
+  /// The RSSI (dBm) at or below which the watch counts as away. Derived from
+  /// the distance limit in distance mode, else the raw RSSI threshold.
+  private func awayCutoffRSSI() -> Int {
     if settings.useDistanceThreshold {
-      return DistanceEstimator.isBeyondLimit(
-        rssi: rssi,
-        limitMeters: settings.lockDistanceMeters,
+      return DistanceEstimator.rssiThreshold(
+        forMeters: settings.lockDistanceMeters,
         referenceRSSIAtOneMeter: settings.referenceRSSIAtOneMeter,
         pathLossExponent: settings.pathLossExponent
       )
     }
-
-    return rssi < settings.rssiThreshold
+    return settings.rssiThreshold
   }
 
   private func beginOrContinueLeaving(now: Date) {

@@ -16,6 +16,9 @@ final class ProximityMonitor: NSObject, ObservableObject {
   /// `fastPollInterval` normally, backing off to `slowPollInterval` only while
   /// the watch is comfortably present. Snaps back to fast the moment the signal
   /// weakens, goes missing, or the watch starts leaving.
+  /// Samples further than this from the window median are dropped as glitches
+  /// before smoothing (RSSI spikes are impulsive).
+  private let outlierRejectMarginDB = 12
   private let fastPollInterval: TimeInterval = 2
   private let slowPollInterval: TimeInterval = 5
   /// dB margin above the away threshold required before slowing down.
@@ -262,11 +265,26 @@ final class ProximityMonitor: NSObject, ObservableObject {
     if samples.count > maxSampleCount {
       samples.removeFirst(samples.count - maxSampleCount)
     }
-    let total = samples.reduce(0) { $0 + $1.value }
-    let smoothed = Int((Double(total) / Double(samples.count)).rounded())
+    let smoothed = robustSmoothed(samples.map(\.value))
     smoothedRSSI = smoothed
     WALog.decide("rssi raw=\(rssi) smoothed=\(smoothed) samples=\(samples.count)")
     lockController.evaluate(rssi: smoothed)
+  }
+
+  /// Median after dropping samples far from the median — robust to single-
+  /// sample RSSI spikes (unlike a plain mean).
+  private func robustSmoothed(_ values: [Int]) -> Int {
+    let med = Self.median(values)
+    let kept = values.filter { abs($0 - med) <= outlierRejectMarginDB }
+    return Self.median(kept.isEmpty ? values : kept)
+  }
+
+  private static func median(_ values: [Int]) -> Int {
+    let sorted = values.sorted()
+    let count = sorted.count
+    guard count > 0 else { return 0 }
+    if count % 2 == 1 { return sorted[count / 2] }
+    return Int((Double(sorted[count / 2 - 1]) + Double(sorted[count / 2])) / 2.0)
   }
 
   private func clearRSSI() {
