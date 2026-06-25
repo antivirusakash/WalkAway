@@ -12,17 +12,24 @@ struct WalkAwayApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var settings = SettingsStore()
   @StateObject private var locker = Locker()
+  @StateObject private var license = LicenseStore()
   @StateObject private var lockController: LockController
   @StateObject private var proximityMonitor: ProximityMonitor
 
   init() {
     let settings = SettingsStore()
     let locker = Locker()
-    let lockController = LockController(settings: settings, locker: locker)
+    let license = LicenseStore()
+    let lockController = LockController(
+      settings: settings,
+      locker: locker,
+      isEntitled: { [weak license] in license?.isEntitled ?? false }
+    )
     let proximityMonitor = ProximityMonitor(settings: settings, lockController: lockController)
 
     _settings = StateObject(wrappedValue: settings)
     _locker = StateObject(wrappedValue: locker)
+    _license = StateObject(wrappedValue: license)
     _lockController = StateObject(wrappedValue: lockController)
     _proximityMonitor = StateObject(wrappedValue: proximityMonitor)
   }
@@ -32,6 +39,7 @@ struct WalkAwayApp: App {
       MenuBarView()
         .environmentObject(settings)
         .environmentObject(locker)
+        .environmentObject(license)
         .environmentObject(lockController)
         .environmentObject(proximityMonitor)
     } label: {
