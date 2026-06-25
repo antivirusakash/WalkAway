@@ -86,6 +86,7 @@ final class LockController: ObservableObject {
     }
 
     let isAway = isAwayReading(rssi)
+    WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") reason=\(reason) away=\(isAway) state=\(state.title)")
     if isAway {
       beginOrContinueLeaving(now: Date())
     } else {
@@ -116,6 +117,7 @@ final class LockController: ObservableObject {
 
     if shouldDeferForUserActivity() {
       state = .leaving(deadline: deferredDeadline(from: now))
+      WALog.decide("away but user active → defer lock")
       return
     }
 
@@ -125,18 +127,21 @@ final class LockController: ObservableObject {
     } else {
       deadline = now.addingTimeInterval(TimeInterval(settings.graceSeconds))
       state = .leaving(deadline: deadline)
+      WALog.decide("start grace \(settings.graceSeconds)s → lock at \(deadline)")
     }
 
     guard now >= deadline else { return }
 
     if shouldDeferForUserActivity() {
       state = .leaving(deadline: deferredDeadline(from: now))
+      WALog.decide("grace elapsed but user active → defer lock")
       return
     }
 
     locker.lockScreen()
     hasLockedForCurrentAbsence = true
     state = .locked
+    WALog.decide("LOCK screen — away confirmed, grace elapsed")
   }
 
   private func shouldDeferForUserActivity() -> Bool {

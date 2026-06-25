@@ -75,17 +75,31 @@ final class SettingsStore: ObservableObject {
     self.systemBluetoothAddress = defaults.string(forKey: Keys.systemBluetoothAddress) ?? ""
     self.peripheralName = defaults.string(forKey: Keys.peripheralName) ?? ""
     self.rssiThreshold = defaults.object(forKey: Keys.rssiThreshold) as? Int ?? -75
-    self.useDistanceThreshold = defaults.object(forKey: Keys.useDistanceThreshold) as? Bool ?? false
-    self.lockDistanceMeters = max(2, defaults.object(forKey: Keys.lockDistanceMeters) as? Double ?? 3)
+    self.useDistanceThreshold = defaults.object(forKey: Keys.useDistanceThreshold) as? Bool ?? true
+    self.lockDistanceMeters = max(2, defaults.object(forKey: Keys.lockDistanceMeters) as? Double ?? 5)
     self.referenceRSSIAtOneMeter = defaults.object(forKey: Keys.referenceRSSIAtOneMeter) as? Int ?? -55
     self.pathLossExponent = defaults.object(forKey: Keys.pathLossExponent) as? Double ?? 2.2
     self.referenceRSSIAtTwoMeters = defaults.object(forKey: Keys.referenceRSSIAtTwoMeters) as? Int ?? -62
-    self.lockWhenRSSIMissing = defaults.object(forKey: Keys.lockWhenRSSIMissing) as? Bool ?? false
+    self.lockWhenRSSIMissing = defaults.object(forKey: Keys.lockWhenRSSIMissing) as? Bool ?? true
     self.graceSeconds = defaults.object(forKey: Keys.graceSeconds) as? Int ?? 5
-    self.noSignalTimeout = defaults.object(forKey: Keys.noSignalTimeout) as? Int ?? 10
+    self.noSignalTimeout = defaults.object(forKey: Keys.noSignalTimeout) as? Int ?? 5
     self.pauseWhileActive = defaults.object(forKey: Keys.pauseWhileActive) as? Bool ?? true
     self.lockOnBluetoothUnavailable = defaults.object(forKey: Keys.lockOnBluetoothUnavailable) as? Bool ?? false
     self.launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+    applyReliabilityMigrationIfNeeded()
+  }
+
+  /// One-time bump so existing installs get the reliable away-detection
+  /// behaviour without manual toggling: missing RSSI counts as away, and the
+  /// old 10s no-signal timeout is shortened to 5s. Runs once; users can still
+  /// change either value afterwards.
+  private func applyReliabilityMigrationIfNeeded() {
+    guard !defaults.bool(forKey: Keys.reliabilityDefaultsV1) else { return }
+    lockWhenRSSIMissing = true
+    if noSignalTimeout == 10 {
+      noSignalTimeout = 5
+    }
+    defaults.set(true, forKey: Keys.reliabilityDefaultsV1)
   }
 
   func select(device: DiscoveredDevice) {
@@ -145,4 +159,5 @@ private enum Keys {
   static let noSignalTimeout = "noSignalTimeout"
   static let pauseWhileActive = "pauseWhileActive"
   static let lockOnBluetoothUnavailable = "lockOnBluetoothUnavailable"
+  static let reliabilityDefaultsV1 = "reliabilityDefaultsV1"
 }

@@ -16,7 +16,11 @@ final class ProximityMonitor: NSObject, ObservableObject {
   private var rssiTimer: Timer?
   private var noSignalTimer: Timer?
   private var systemBluetoothTimer: Timer?
-  private var samples: [Int] = []
+  private var samples: [RSSISample] = []
+  private let maxSampleCount = 5
+  /// Discard RSSI readings older than this so a stale "near" value can never
+  /// keep the watch marked present once fresh samples stop arriving.
+  private let sampleMaxAge: TimeInterval = 10
   private var knownPeripherals: [UUID: CBPeripheral] = [:]
   private var systemBluetoothPollingStartDate = Date()
   private var lastSystemDeviceSeenDate: Date?
@@ -204,14 +208,18 @@ final class ProximityMonitor: NSObject, ObservableObject {
   }
 
   private func pushRSSI(_ rssi: Int) {
-    lastRSSIDate = Date()
-    samples.append(rssi)
-    if samples.count > 5 {
-      samples.removeFirst(samples.count - 5)
+    let now = Date()
+    lastRSSIDate = now
+    samples.append(RSSISample(value: rssi, time: now))
+    samples.removeAll { now.timeIntervalSince($0.time) > sampleMaxAge }
+    if samples.count > maxSampleCount {
+      samples.removeFirst(samples.count - maxSampleCount)
     }
-    let total = samples.reduce(0, +)
-    smoothedRSSI = Int((Double(total) / Double(samples.count)).rounded())
-    lockController.evaluate(rssi: smoothedRSSI)
+    let total = samples.reduce(0) { $0 + $1.value }
+    let smoothed = Int((Double(total) / Double(samples.count)).rounded())
+    smoothedRSSI = smoothed
+    WALog.decide("rssi raw=\(rssi) smoothed=\(smoothed) samples=\(samples.count)")
+    lockController.evaluate(rssi: smoothed)
   }
 
   private func clearRSSI() {
@@ -331,6 +339,11 @@ final class ProximityMonitor: NSObject, ObservableObject {
       bluetoothAddress: device.address
     )
   }
+}
+
+private struct RSSISample {
+  let value: Int
+  let time: Date
 }
 
 extension ProximityMonitor: CBCentralManagerDelegate {
