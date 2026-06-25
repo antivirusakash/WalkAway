@@ -25,12 +25,14 @@ final class LockController: ObservableObject {
 
   private let settings: SettingsStore
   private let locker: Locker
+  private let metrics: MetricsMonitor?
   private var hasLockedForCurrentAbsence = false
   private let lockRecheckInterval: TimeInterval = 2
 
-  init(settings: SettingsStore, locker: Locker) {
+  init(settings: SettingsStore, locker: Locker, metrics: MetricsMonitor? = nil) {
     self.settings = settings
     self.locker = locker
+    self.metrics = metrics
     self.state = settings.hasSelectedDevice ? .connecting : .noDevice
   }
 
@@ -117,6 +119,7 @@ final class LockController: ObservableObject {
 
     if shouldDeferForUserActivity() {
       state = .leaving(deadline: deferredDeadline(from: now))
+      metrics?.recordDefer()
       WALog.decide("away but user active → defer lock")
       return
     }
@@ -127,6 +130,7 @@ final class LockController: ObservableObject {
     } else {
       deadline = now.addingTimeInterval(TimeInterval(settings.graceSeconds))
       state = .leaving(deadline: deadline)
+      metrics?.recordAway()
       WALog.decide("start grace \(settings.graceSeconds)s → lock at \(deadline)")
     }
 
@@ -134,6 +138,7 @@ final class LockController: ObservableObject {
 
     if shouldDeferForUserActivity() {
       state = .leaving(deadline: deferredDeadline(from: now))
+      metrics?.recordDefer()
       WALog.decide("grace elapsed but user active → defer lock")
       return
     }
@@ -141,6 +146,7 @@ final class LockController: ObservableObject {
     locker.lockScreen()
     hasLockedForCurrentAbsence = true
     state = .locked
+    metrics?.recordLock()
     WALog.decide("LOCK screen — away confirmed, grace elapsed")
   }
 

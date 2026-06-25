@@ -12,17 +12,24 @@ struct WalkAwayApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var settings = SettingsStore()
   @StateObject private var locker = Locker()
+  @StateObject private var metrics = MetricsMonitor()
   @StateObject private var lockController: LockController
   @StateObject private var proximityMonitor: ProximityMonitor
 
   init() {
     let settings = SettingsStore()
     let locker = Locker()
-    let lockController = LockController(settings: settings, locker: locker)
-    let proximityMonitor = ProximityMonitor(settings: settings, lockController: lockController)
+    let metrics = MetricsMonitor()
+    let lockController = LockController(settings: settings, locker: locker, metrics: metrics)
+    let proximityMonitor = ProximityMonitor(
+      settings: settings,
+      lockController: lockController,
+      metrics: metrics
+    )
 
     _settings = StateObject(wrappedValue: settings)
     _locker = StateObject(wrappedValue: locker)
+    _metrics = StateObject(wrappedValue: metrics)
     _lockController = StateObject(wrappedValue: lockController)
     _proximityMonitor = StateObject(wrappedValue: proximityMonitor)
   }
@@ -32,6 +39,7 @@ struct WalkAwayApp: App {
       MenuBarView()
         .environmentObject(settings)
         .environmentObject(locker)
+        .environmentObject(metrics)
         .environmentObject(lockController)
         .environmentObject(proximityMonitor)
     } label: {

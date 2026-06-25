@@ -4,10 +4,12 @@ import SwiftUI
 struct MenuBarView: View {
   @EnvironmentObject private var settings: SettingsStore
   @EnvironmentObject private var locker: Locker
+  @EnvironmentObject private var metrics: MetricsMonitor
   @EnvironmentObject private var lockController: LockController
   @EnvironmentObject private var proximityMonitor: ProximityMonitor
   @State private var isCalibrationExpanded = false
   @State private var isAdvancedExpanded = false
+  @State private var isDiagnosticsExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -16,6 +18,8 @@ struct MenuBarView: View {
       deviceSection
       Divider()
       tuningSection
+      Divider()
+      diagnosticsSection
       Divider()
       actionSection
     }
@@ -388,6 +392,38 @@ struct MenuBarView: View {
       .font(.caption)
       Slider(value: value, in: range, step: step)
     }
+  }
+
+  private var diagnosticsSection: some View {
+    DisclosureGroup(isExpanded: $isDiagnosticsExpanded) {
+      VStack(alignment: .leading, spacing: 4) {
+        metricRow("Memory", String(format: "%.0f MB", metrics.memoryMB))
+        metricRow("CPU (app)", String(format: "%.2f %%", metrics.cpuPercent))
+        metricRow("Poll cost", String(format: "%.0f ms avg", metrics.avgPollMillis))
+        metricRow("Locks", "\(metrics.lockCount)")
+        metricRow("Away events", "\(metrics.awayCount)")
+        metricRow("Deferred", "\(metrics.deferCount)")
+        metricRow("Uptime", Formatters.seconds(metrics.uptimeSeconds))
+
+        Button("Reset stats") { metrics.resetCounters() }
+          .buttonStyle(.link)
+          .font(.caption2)
+          .padding(.top, 2)
+      }
+      .padding(.top, 4)
+    } label: {
+      Label("Diagnostics", systemImage: "waveform.path.ecg").font(.caption)
+    }
+    .font(.caption)
+  }
+
+  private func metricRow(_ title: String, _ value: String) -> some View {
+    HStack {
+      Text(title).foregroundStyle(.secondary)
+      Spacer()
+      Text(value).monospacedDigit()
+    }
+    .font(.caption)
   }
 
   private var actionSection: some View {

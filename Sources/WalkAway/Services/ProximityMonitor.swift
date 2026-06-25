@@ -11,6 +11,7 @@ final class ProximityMonitor: NSObject, ObservableObject {
 
   private let settings: SettingsStore
   private let lockController: LockController
+  private let metrics: MetricsMonitor?
   private var centralManager: CBCentralManager!
   private var targetPeripheral: CBPeripheral?
   private var rssiTimer: Timer?
@@ -25,9 +26,10 @@ final class ProximityMonitor: NSObject, ObservableObject {
   private var systemBluetoothPollingStartDate = Date()
   private var lastSystemDeviceSeenDate: Date?
 
-  init(settings: SettingsStore, lockController: LockController) {
+  init(settings: SettingsStore, lockController: LockController, metrics: MetricsMonitor? = nil) {
     self.settings = settings
     self.lockController = lockController
+    self.metrics = metrics
     super.init()
     self.centralManager = CBCentralManager(delegate: self, queue: .main)
     self.noSignalTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -165,9 +167,12 @@ final class ProximityMonitor: NSObject, ObservableObject {
     guard !targetAddress.isEmpty else { return }
 
     DispatchQueue.global(qos: .utility).async { [weak self] in
+      let pollStart = Date()
       let devices = SystemBluetoothSnapshot.load()
+      let pollMillis = Date().timeIntervalSince(pollStart) * 1000
       DispatchQueue.main.async {
         guard let self else { return }
+        self.metrics?.recordPoll(millis: pollMillis)
         self.mergeSystemBluetoothDevices(devices)
         if let device = devices.first(where: { $0.address == targetAddress }) {
           self.isSelectedSystemDeviceVisible = true

@@ -5,7 +5,7 @@ import os
 /// confirmed and any future inconsistency diagnosed via Console.app / `log`.
 /// Subsystem is the app bundle id (com.fizday.walkaway) when bundled:
 ///
-///   log stream --predicate 'subsystem == "com.fizday.walkaway" && category == "decision"'
+///   /usr/bin/log stream --predicate 'subsystem == "com.fizday.walkaway" && category == "decision"'
 enum WALog {
   static let decision = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "WalkAway",

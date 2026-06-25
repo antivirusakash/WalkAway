@@ -3,8 +3,8 @@ set -euo pipefail
 
 APP_NAME="WalkAway"
 BUNDLE_ID="com.fizday.walkaway"
-VERSION="${VERSION:-0.3.1}"
-BUILD_NUMBER="${BUILD_NUMBER:-5}"
+VERSION="${VERSION:-0.4.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-6}"
 MIN_SYSTEM_VERSION="13.0"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Fizday Tech (OPC) Private Limited (BSX8KAUXDZ)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-FizdayNotaryProfile}"
