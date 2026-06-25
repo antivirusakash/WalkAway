@@ -36,10 +36,16 @@ final class LockController: ObservableObject {
   /// Consecutive away readings required before the grace countdown starts —
   /// debounce so a single weak reading can't begin a lock.
   private let awayConfirmReadings = 2
+  /// Consecutive present readings required to ABORT an already-armed lock.
+  /// Stops one or two stray "present" RSSI readings from canceling a lock
+  /// that is mid-grace (the real-world walk-away failure we observed).
+  private let presentConfirmReadings = 3
   /// Sticky away/present decision within the hysteresis band.
   private var lastReadingAway = false
   /// Run of consecutive away readings (resets on any present reading).
   private var consecutiveAwayReadings = 0
+  /// Run of consecutive present readings (resets on any away reading).
+  private var consecutivePresentReadings = 0
 
   init(settings: SettingsStore, locker: Locker, metrics: MetricsMonitor? = nil) {
     self.settings = settings
@@ -102,14 +108,31 @@ final class LockController: ObservableObject {
     let isAway = isAwayReading(rssi)
     if isAway {
       consecutiveAwayReadings += 1
+      consecutivePresentReadings = 0
     } else {
+      consecutivePresentReadings += 1
       consecutiveAwayReadings = 0
     }
-    WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") reason=\(reason) away=\(isAway) run=\(consecutiveAwayReadings)/\(awayConfirmReadings) state=\(state.title)")
+    let cutoff = awayCutoffRSSI()
+    let distStr = rssi.map {
+      String(format: "%.1fm", DistanceEstimator.meters(
+        rssi: $0,
+        referenceRSSIAtOneMeter: settings.referenceRSSIAtOneMeter,
+        pathLossExponent: settings.pathLossExponent
+      ))
+    } ?? "n/a"
+    WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") dist=\(distStr) limit=\(String(format: "%.1f", settings.lockDistanceMeters))m cutoff=\(cutoff)dBm reason=\(reason) away=\(isAway) awayRun=\(consecutiveAwayReadings)/\(awayConfirmReadings) presentRun=\(consecutivePresentReadings)/\(presentConfirmReadings) state=\(state.title)")
 
     if isAway {
       // Debounce: require N consecutive away readings before arming.
       guard consecutiveAwayReadings >= awayConfirmReadings else { return }
+      beginOrContinueLeaving(now: Date())
+    } else if case .leaving = state, consecutivePresentReadings < presentConfirmReadings {
+      // A lock is armed. One or two stray "present" readings must NOT cancel
+      // it — hold the grace and honor its deadline. Only sustained presence
+      // (>= presentConfirmReadings) aborts. This is the real-world walk-away
+      // failure we observed: a lone returning RSSI killed an armed lock.
+      WALog.decide("present during grace (\(consecutivePresentReadings)/\(presentConfirmReadings)) — holding armed lock")
       beginOrContinueLeaving(now: Date())
     } else {
       state = .present

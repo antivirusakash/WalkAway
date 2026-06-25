@@ -267,7 +267,12 @@ final class ProximityMonitor: NSObject, ObservableObject {
     }
     let smoothed = robustSmoothed(samples.map(\.value))
     smoothedRSSI = smoothed
-    WALog.decide("rssi raw=\(rssi) smoothed=\(smoothed) samples=\(samples.count)")
+    let dist = DistanceEstimator.meters(
+      rssi: smoothed,
+      referenceRSSIAtOneMeter: settings.referenceRSSIAtOneMeter,
+      pathLossExponent: settings.pathLossExponent
+    )
+    WALog.decide("rssi raw=\(rssi) smoothed=\(smoothed) dist=\(String(format: "%.1f", dist))m samples=\(samples.count)")
     lockController.evaluate(rssi: smoothed)
   }
 
