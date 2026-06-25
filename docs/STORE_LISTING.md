@@ -25,26 +25,30 @@ Walk away, your Mac locks itself. Sit down, it's right where you left it. Apple 
 > field, subtitle, and **screenshot captions** (Apple indexes caption text as of
 > June 2025). Front-load value; keep it scannable with headings + bullets.
 
-**Walk away. Your Mac locks. Sit down. Keep working.**
+Walk away. Your Mac locks. Sit down. Keep working.
 
-WalkAway locks your Mac the moment you step away with your Apple Watch — and keeps it open while you're sitting right there. It locks on *presence*, not on an idle timer, so your screen is never left exposed to the room after you go, and never locks on you mid-sentence.
+WalkAway locks your Mac the moment you step away with your Apple Watch — and keeps it open while you're sitting right there. It locks on presence, not on an idle timer, so your screen is never left exposed to the room after you go, and never locks on you mid-sentence.
 
-**Why WalkAway**
-- **Presence, not timers.** Idle-lock timers lock while you're reading, or leave your Mac open for minutes after you've gone. WalkAway locks on distance.
-- **Reliable departures.** Tuned so leaving always locks — an armed lock holds through brief signal blips, so a single stray reading can't cancel a lock in progress.
-- **Stays out of your way.** Won't lock while you're actively typing or moving the mouse — it waits until you're truly gone.
-- **Your distance.** Choose how far is "away." Default 6 meters, adjustable from 2 to 20.
-- **Light and quiet.** Lives in the menu bar, sips resources, launches at login.
+Why WalkAway
 
-**How it works**
+• Presence, not timers. Idle-lock timers lock while you're reading, or leave your Mac open for minutes after you've gone. WalkAway locks on distance.
+• Reliable departures. Tuned so leaving always locks — an armed lock holds through brief signal blips, so a single stray reading can't cancel a lock in progress.
+• Stays out of your way. Won't lock while you're actively typing or moving the mouse — it waits until you're truly gone.
+• Your distance. Choose how far is "away." Default 6 meters, adjustable from 2 to 20.
+• Light and quiet. Lives in the menu bar, sips resources, launches at login.
+
+How it works
+
 1. Pick your Apple Watch from the menu bar.
 2. Set your lock distance and grace period.
 3. Walk away — your Mac locks itself. Come back — it's right where you left it.
 
-**Private by design**
+Private by design
+
 WalkAway runs entirely on your Mac. No account, no cloud, no analytics, no tracking — nothing leaves your device. It only reads the Bluetooth signal strength of the watch you choose.
 
-**Good to know**
+Good to know
+
 WalkAway only locks — it never unlocks, sleeps, or wakes your Mac, and never touches your running apps. Long-running tasks keep going behind the lock screen. Unlocking stays with macOS (password, Touch ID, or Apple Watch Auto Unlock).
 
 Free. Signed with a Developer ID and notarized by Apple.
