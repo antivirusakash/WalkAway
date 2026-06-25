@@ -76,7 +76,7 @@ final class SettingsStore: ObservableObject {
     self.peripheralName = defaults.string(forKey: Keys.peripheralName) ?? ""
     self.rssiThreshold = defaults.object(forKey: Keys.rssiThreshold) as? Int ?? -75
     self.useDistanceThreshold = defaults.object(forKey: Keys.useDistanceThreshold) as? Bool ?? true
-    self.lockDistanceMeters = max(2, defaults.object(forKey: Keys.lockDistanceMeters) as? Double ?? 5)
+    self.lockDistanceMeters = max(2, defaults.object(forKey: Keys.lockDistanceMeters) as? Double ?? 6)
     self.referenceRSSIAtOneMeter = defaults.object(forKey: Keys.referenceRSSIAtOneMeter) as? Int ?? -55
     self.pathLossExponent = defaults.object(forKey: Keys.pathLossExponent) as? Double ?? 2.2
     self.referenceRSSIAtTwoMeters = defaults.object(forKey: Keys.referenceRSSIAtTwoMeters) as? Int ?? -62
@@ -87,6 +87,17 @@ final class SettingsStore: ObservableObject {
     self.lockOnBluetoothUnavailable = defaults.object(forKey: Keys.lockOnBluetoothUnavailable) as? Bool ?? false
     self.launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     applyReliabilityMigrationIfNeeded()
+    applyDistanceDefaultMigrationIfNeeded()
+  }
+
+  /// One-time push of the 6 m lock distance to every install (including users
+  /// who previously set a custom distance), and turns lock-by-distance on so
+  /// the value takes effect. Runs once; users can still adjust afterwards.
+  private func applyDistanceDefaultMigrationIfNeeded() {
+    guard !defaults.bool(forKey: Keys.distanceDefaultV2) else { return }
+    useDistanceThreshold = true
+    lockDistanceMeters = 6
+    defaults.set(true, forKey: Keys.distanceDefaultV2)
   }
 
   /// One-time bump so existing installs get the reliable away-detection
@@ -160,4 +171,5 @@ private enum Keys {
   static let pauseWhileActive = "pauseWhileActive"
   static let lockOnBluetoothUnavailable = "lockOnBluetoothUnavailable"
   static let reliabilityDefaultsV1 = "reliabilityDefaultsV1"
+  static let distanceDefaultV2 = "distanceDefaultV2"
 }
