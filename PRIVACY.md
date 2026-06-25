@@ -2,7 +2,7 @@
 
 **Last updated: June 25, 2026**
 
-Hosted version: <https://antivirusakash.github.io/WalkAway/>
+Hosted version: <https://gist.github.com/akash-viven/dd6443a110049e2a3a41f1b6892979fa>
 
 WalkAway is a macOS menu-bar app that locks your Mac when your paired Apple
 Watch moves away. The short version: **WalkAway collects no personal data, has
