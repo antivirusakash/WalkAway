@@ -1,6 +1,7 @@
 # WalkAway — Store / Landing Listing
 
-Price: **$4.99** (one-time)
+Price: **Free**
+Distribution: Developer ID direct (notarized DMG via GitHub Releases) — not the Mac App Store
 Category: Utilities / Productivity / Security
 Platform: macOS 13 (Ventura) and later · Universal (Apple Silicon + Intel)
 
@@ -42,11 +43,12 @@ Lives quietly in your menu bar. Launches at login. Shows live signal and status 
 
 ---
 
-## What's New (v0.2.1)
-- Far more reliable "walking away" detection: missing watch signal now locks instead of stalling.
-- Stale signal readings expire so departures register quickly.
-- Faster lock when your watch goes out of range.
-- Default lock distance set to 6 meters (adjustable any time).
+## What's New (v1.0.0)
+- First public release. Free, signed, and notarized.
+- Reliable "walking away" detection: missing watch signal locks instead of stalling.
+- An armed lock holds through transient signal blips — a single stray reading can't cancel a lock in progress.
+- Smoothed readings (median + outlier rejection) with debounce on both leaving and returning.
+- Default lock distance 6 meters (adjustable 2–20).
 
 ---
 
