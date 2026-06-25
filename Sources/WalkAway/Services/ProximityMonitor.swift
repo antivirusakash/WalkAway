@@ -12,6 +12,15 @@ final class ProximityMonitor: NSObject, ObservableObject {
   private let settings: SettingsStore
   private let lockController: LockController
   private let metrics: MetricsMonitor?
+  /// Adaptive poll cadence: poll the (expensive) system_profiler source every
+  /// `fastPollInterval` normally, backing off to `slowPollInterval` only while
+  /// the watch is comfortably present. Snaps back to fast the moment the signal
+  /// weakens, goes missing, or the watch starts leaving.
+  private let fastPollInterval: TimeInterval = 2
+  private let slowPollInterval: TimeInterval = 5
+  /// dB margin above the away threshold required before slowing down.
+  private let comfortablePresentMarginDB = 6
+  private var currentPollInterval: TimeInterval = 2
   private var centralManager: CBCentralManager!
   private var targetPeripheral: CBPeripheral?
   private var rssiTimer: Timer?
@@ -143,12 +152,44 @@ final class ProximityMonitor: NSObject, ObservableObject {
     lastSystemDeviceSeenDate = nil
     lockController.connecting()
     pollSystemBluetooth()
+    currentPollInterval = fastPollInterval
+    scheduleSystemBluetoothTimer()
+  }
+
+  private func scheduleSystemBluetoothTimer() {
     systemBluetoothTimer?.invalidate()
-    systemBluetoothTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+    systemBluetoothTimer = Timer.scheduledTimer(withTimeInterval: currentPollInterval, repeats: true) { [weak self] _ in
       Task { @MainActor in
         self?.pollSystemBluetooth()
       }
     }
+  }
+
+  /// Reschedule the poll timer if the desired cadence changed.
+  private func applyPollInterval() {
+    let desired = desiredPollInterval()
+    guard desired != currentPollInterval else { return }
+    currentPollInterval = desired
+    scheduleSystemBluetoothTimer()
+  }
+
+  private func desiredPollInterval() -> TimeInterval {
+    // Only slow down when comfortably present with a strong, valid reading.
+    guard case .present = lockController.state, let rssi = smoothedRSSI else {
+      return fastPollInterval
+    }
+    let awayThresholdRSSI: Int
+    if settings.useDistanceThreshold {
+      awayThresholdRSSI = DistanceEstimator.rssiThreshold(
+        forMeters: settings.lockDistanceMeters,
+        referenceRSSIAtOneMeter: settings.referenceRSSIAtOneMeter,
+        pathLossExponent: settings.pathLossExponent
+      )
+    } else {
+      awayThresholdRSSI = settings.rssiThreshold
+    }
+    // RSSI is dBm (negative); stronger = larger. Require a margin over threshold.
+    return rssi >= awayThresholdRSSI + comfortablePresentMarginDB ? slowPollInterval : fastPollInterval
   }
 
   private func scanSystemBluetoothDevices() {
@@ -192,6 +233,7 @@ final class ProximityMonitor: NSObject, ObservableObject {
           self.isSelectedSystemDeviceVisible = false
           self.evaluateMissingSystemDevice()
         }
+        self.applyPollInterval()
       }
     }
   }
