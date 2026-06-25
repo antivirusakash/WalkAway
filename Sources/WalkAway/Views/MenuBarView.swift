@@ -4,14 +4,10 @@ import SwiftUI
 struct MenuBarView: View {
   @EnvironmentObject private var settings: SettingsStore
   @EnvironmentObject private var locker: Locker
-  @EnvironmentObject private var license: LicenseStore
   @EnvironmentObject private var lockController: LockController
   @EnvironmentObject private var proximityMonitor: ProximityMonitor
   @State private var isCalibrationExpanded = false
   @State private var isAdvancedExpanded = false
-  @State private var isEnteringKey = false
-  @State private var keyInput = ""
-  @State private var activationFailed = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -20,8 +16,6 @@ struct MenuBarView: View {
       deviceSection
       Divider()
       tuningSection
-      Divider()
-      licenseSection
       Divider()
       actionSection
     }
@@ -393,83 +387,6 @@ struct MenuBarView: View {
       }
       .font(.caption)
       Slider(value: value, in: range, step: step)
-    }
-  }
-
-  @ViewBuilder
-  private var licenseSection: some View {
-    switch license.status {
-    case let .licensed(payload):
-      HStack(spacing: 6) {
-        Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
-        Text("Licensed").fontWeight(.medium)
-        Spacer()
-        Text(payload).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-      }
-      .font(.caption)
-
-    case let .trial(daysLeft):
-      VStack(alignment: .leading, spacing: 8) {
-        HStack {
-          Image(systemName: "clock").foregroundStyle(.secondary)
-          Text("Trial · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left").font(.caption)
-          Spacer()
-          buyButton
-        }
-        licenseEntry
-      }
-
-    case .expired:
-      VStack(alignment: .leading, spacing: 8) {
-        HStack(spacing: 6) {
-          Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-          Text("Trial ended — auto-lock paused").font(.caption).fontWeight(.medium)
-        }
-        HStack {
-          buyButton
-          Spacer()
-        }
-        licenseEntry
-      }
-    }
-  }
-
-  private var buyButton: some View {
-    Button("Buy · $4.99") {
-      NSWorkspace.shared.open(LicenseStore.purchaseURL)
-    }
-    .font(.caption)
-  }
-
-  @ViewBuilder
-  private var licenseEntry: some View {
-    if isEnteringKey {
-      VStack(alignment: .leading, spacing: 4) {
-        TextField("Paste license key", text: $keyInput, axis: .vertical)
-          .textFieldStyle(.roundedBorder)
-          .lineLimit(1...3)
-          .font(.caption)
-        HStack {
-          Button("Activate") {
-            if license.activate(keyInput) {
-              isEnteringKey = false
-              activationFailed = false
-              keyInput = ""
-            } else {
-              activationFailed = true
-            }
-          }
-          .font(.caption)
-          if activationFailed {
-            Text("Invalid key").foregroundStyle(.red).font(.caption2)
-          }
-          Spacer()
-        }
-      }
-    } else {
-      Button("Enter license key") { isEnteringKey = true }
-        .buttonStyle(.link)
-        .font(.caption)
     }
   }
 

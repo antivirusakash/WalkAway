@@ -25,16 +25,12 @@ final class LockController: ObservableObject {
 
   private let settings: SettingsStore
   private let locker: Locker
-  /// Returns true while the app is licensed or in trial. Auto-lock is disabled
-  /// when this is false (trial expired, unlicensed).
-  private let isEntitled: () -> Bool
   private var hasLockedForCurrentAbsence = false
   private let lockRecheckInterval: TimeInterval = 2
 
-  init(settings: SettingsStore, locker: Locker, isEntitled: @escaping () -> Bool = { true }) {
+  init(settings: SettingsStore, locker: Locker) {
     self.settings = settings
     self.locker = locker
-    self.isEntitled = isEntitled
     self.state = settings.hasSelectedDevice ? .connecting : .noDevice
   }
 
@@ -115,12 +111,6 @@ final class LockController: ObservableObject {
   }
 
   private func beginOrContinueLeaving(now: Date) {
-    guard isEntitled() else {
-      // Trial expired and unlicensed: do not arm or lock. UI surfaces this.
-      WALog.decide("away but unlicensed → auto-lock disabled")
-      return
-    }
-
     if hasLockedForCurrentAbsence {
       return
     }
