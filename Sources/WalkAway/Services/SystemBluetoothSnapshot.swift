@@ -38,7 +38,7 @@ enum SystemBluetoothSnapshot {
     var devices: [SystemBluetoothDevice] = []
     var currentName: String?
     var currentAddress: String?
-    var currentRSSI: Int?
+    var currentRSSIValues: [Int] = []
 
     func flush() {
       guard let currentName, let currentAddress else { return }
@@ -46,7 +46,7 @@ enum SystemBluetoothSnapshot {
         SystemBluetoothDevice(
           name: currentName,
           address: normalizeAddress(currentAddress),
-          rssi: currentRSSI
+          rssi: Self.median(currentRSSIValues)
         )
       )
     }
@@ -61,19 +61,30 @@ enum SystemBluetoothSnapshot {
         flush()
         currentName = String(trimmed.dropLast())
         currentAddress = nil
-        currentRSSI = nil
+        currentRSSIValues = []
         continue
       }
 
       if trimmed.hasPrefix("Address:") {
         currentAddress = value(after: "Address:", in: trimmed)
-      } else if trimmed.hasPrefix("RSSI:") {
-        currentRSSI = Int(value(after: "RSSI:", in: trimmed))
+      } else if trimmed.hasPrefix("RSSI:"), let value = Int(value(after: "RSSI:", in: trimmed)) {
+        // A single snapshot can list several RSSI lines for one device that
+        // span ~25 dB (e.g. -49, -48, -72). Median across them kills the
+        // impulsive outlier instead of arbitrarily keeping the last line.
+        currentRSSIValues.append(value)
       }
     }
 
     flush()
     return devices
+  }
+
+  private static func median(_ values: [Int]) -> Int? {
+    guard !values.isEmpty else { return nil }
+    let sorted = values.sorted()
+    let count = sorted.count
+    if count % 2 == 1 { return sorted[count / 2] }
+    return Int((Double(sorted[count / 2 - 1]) + Double(sorted[count / 2])) / 2.0)
   }
 
   static func normalizeAddress(_ address: String) -> String {

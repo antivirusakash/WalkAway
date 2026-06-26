@@ -65,6 +65,20 @@ final class SettingsStore: ObservableObject {
     didSet { defaults.set(lockOnBluetoothUnavailable, forKey: Keys.lockOnBluetoothUnavailable) }
   }
 
+  /// When on, WalkAway only auto-locks inside the [start, end) window below.
+  @Published var lockScheduleEnabled: Bool {
+    didSet { defaults.set(lockScheduleEnabled, forKey: Keys.lockScheduleEnabled) }
+  }
+
+  /// Auto-lock window as minutes since midnight. Default 09:00–17:00.
+  @Published var lockScheduleStartMinutes: Int {
+    didSet { defaults.set(lockScheduleStartMinutes, forKey: Keys.lockScheduleStartMinutes) }
+  }
+
+  @Published var lockScheduleEndMinutes: Int {
+    didSet { defaults.set(lockScheduleEndMinutes, forKey: Keys.lockScheduleEndMinutes) }
+  }
+
   @Published private(set) var launchAtLoginEnabled: Bool
 
   private let defaults: UserDefaults
@@ -85,6 +99,9 @@ final class SettingsStore: ObservableObject {
     self.noSignalTimeout = defaults.object(forKey: Keys.noSignalTimeout) as? Int ?? 5
     self.pauseWhileActive = defaults.object(forKey: Keys.pauseWhileActive) as? Bool ?? true
     self.lockOnBluetoothUnavailable = defaults.object(forKey: Keys.lockOnBluetoothUnavailable) as? Bool ?? false
+    self.lockScheduleEnabled = defaults.object(forKey: Keys.lockScheduleEnabled) as? Bool ?? false
+    self.lockScheduleStartMinutes = defaults.object(forKey: Keys.lockScheduleStartMinutes) as? Int ?? 9 * 60
+    self.lockScheduleEndMinutes = defaults.object(forKey: Keys.lockScheduleEndMinutes) as? Int ?? 17 * 60
     self.launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     applyReliabilityMigrationIfNeeded()
     applyDistanceDefaultMigrationIfNeeded()
@@ -111,6 +128,20 @@ final class SettingsStore: ObservableObject {
       noSignalTimeout = 5
     }
     defaults.set(true, forKey: Keys.reliabilityDefaultsV1)
+  }
+
+  /// Whether auto-lock is permitted right now. Always true unless a schedule is
+  /// enabled, in which case only inside the [start, end) window. Supports a
+  /// window that wraps past midnight (start > end, e.g. 22:00–06:00).
+  func isWithinLockSchedule(_ date: Date = Date()) -> Bool {
+    guard lockScheduleEnabled else { return true }
+    let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+    let now = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+    let start = lockScheduleStartMinutes
+    let end = lockScheduleEndMinutes
+    if start == end { return false }
+    if start < end { return now >= start && now < end }
+    return now >= start || now < end
   }
 
   func select(device: DiscoveredDevice) {
@@ -172,4 +203,7 @@ private enum Keys {
   static let lockOnBluetoothUnavailable = "lockOnBluetoothUnavailable"
   static let reliabilityDefaultsV1 = "reliabilityDefaultsV1"
   static let distanceDefaultV2 = "distanceDefaultV2"
+  static let lockScheduleEnabled = "lockScheduleEnabled"
+  static let lockScheduleStartMinutes = "lockScheduleStartMinutes"
+  static let lockScheduleEndMinutes = "lockScheduleEndMinutes"
 }

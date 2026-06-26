@@ -31,11 +31,14 @@ final class LockController: ObservableObject {
 
   // Tier A accuracy tuning.
   /// dB the signal must recover above the away cutoff before re-arming as
-  /// present — asymmetric hysteresis to stop chatter around one threshold.
-  private let hysteresisMarginDB = 8
+  /// present — asymmetric hysteresis for raw-RSSI mode only. In distance mode
+  /// the recover point scales with the limit (see presentRecoverRSSI), so an
+  /// in-range distance can't get latched "away" by a single far spike.
+  private let hysteresisMarginDB = 3
   /// Consecutive away readings required before the grace countdown starts —
-  /// debounce so a single weak reading can't begin a lock.
-  private let awayConfirmReadings = 2
+  /// debounce so a brief RSSI noise burst can't begin a lock. system_profiler
+  /// RSSI swings ~30 dB at a fixed distance; 2 was too few (locked at 3-4 m).
+  private let awayConfirmReadings = 3
   /// Consecutive present readings required to ABORT an already-armed lock.
   /// Stops one or two stray "present" RSSI readings from canceling a lock
   /// that is mid-grace (the real-world walk-away failure we observed).
@@ -81,7 +84,7 @@ final class LockController: ObservableObject {
 
   func bluetoothUnavailable(_ message: String) {
     state = .bluetoothUnavailable(message)
-    guard settings.lockOnBluetoothUnavailable else { return }
+    guard settings.lockOnBluetoothUnavailable, settings.isWithinLockSchedule() else { return }
     beginOrContinueLeaving(now: Date())
   }
 
@@ -124,16 +127,30 @@ final class LockController: ObservableObject {
     WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") dist=\(distStr) limit=\(String(format: "%.1f", settings.lockDistanceMeters))m cutoff=\(cutoff)dBm reason=\(reason) away=\(isAway) awayRun=\(consecutiveAwayReadings)/\(awayConfirmReadings) presentRun=\(consecutivePresentReadings)/\(presentConfirmReadings) state=\(state.title)")
 
     if isAway {
+      // Schedule gate: outside the configured auto-lock window, never lock.
+      // Hold present so nothing arms until the window opens.
+      guard settings.isWithinLockSchedule() else {
+        if case .present = state {} else {
+          WALog.decide("away but outside auto-lock window — idle until schedule opens")
+        }
+        state = .present
+        hasLockedForCurrentAbsence = false
+        consecutiveAwayReadings = 0
+        return
+      }
       // Debounce: require N consecutive away readings before arming.
       guard consecutiveAwayReadings >= awayConfirmReadings else { return }
       beginOrContinueLeaving(now: Date())
-    } else if case .leaving = state, consecutivePresentReadings < presentConfirmReadings {
-      // A lock is armed. One or two stray "present" readings must NOT cancel
-      // it — hold the grace and honor its deadline. Only sustained presence
-      // (>= presentConfirmReadings) aborts. This is the real-world walk-away
-      // failure we observed: a lone returning RSSI killed an armed lock.
-      WALog.decide("present during grace (\(consecutivePresentReadings)/\(presentConfirmReadings)) — holding armed lock")
-      beginOrContinueLeaving(now: Date())
+    } else if isArmedOrLocked(state), consecutivePresentReadings < presentConfirmReadings {
+      // Armed (leaving) OR already locked, and this reading is "present". A lone
+      // present blip must NOT reset the state: while leaving it would cancel a
+      // real walk-away (and firing here would lock on a present reading — the
+      // 3-4 m false-lock); while locked it clears hasLockedForCurrentAbsence and
+      // re-fires lockScreen() on the next weak reading (observed 8 re-locks in
+      // one departure). Only sustained presence (>= presentConfirmReadings)
+      // returns to Present via the else branch. The lock itself only fires on an
+      // away reading once grace elapses (see the isAway branch).
+      WALog.decide("present blip (\(consecutivePresentReadings)/\(presentConfirmReadings)) — holding \(state.title)")
     } else {
       state = .present
       hasLockedForCurrentAbsence = false
@@ -152,11 +169,35 @@ final class LockController: ObservableObject {
     let awayCutoff = awayCutoffRSSI()
     if rssi <= awayCutoff {
       lastReadingAway = true
-    } else if rssi >= awayCutoff + hysteresisMarginDB {
+    } else if rssi >= presentRecoverRSSI() {
       lastReadingAway = false
     }
     // Within the band, hold the previous decision (sticky).
     return lastReadingAway
+  }
+
+  /// RSSI (dBm) at or above which the watch re-arms as present after being
+  /// away. In distance mode this is the RSSI at 80% of the limit, so anything
+  /// comfortably inside the limit clears an "away" latch — a far noise spike
+  /// can't trap an in-range watch. In raw mode it's a fixed dB margin.
+  private func presentRecoverRSSI() -> Int {
+    if settings.useDistanceThreshold {
+      return DistanceEstimator.rssiThreshold(
+        forMeters: settings.lockDistanceMeters * 0.8,
+        referenceRSSIAtOneMeter: settings.referenceRSSIAtOneMeter,
+        pathLossExponent: settings.pathLossExponent
+      )
+    }
+    return settings.rssiThreshold + hysteresisMarginDB
+  }
+
+  /// True while a lock is armed (leaving) or has already fired (locked) — states
+  /// a lone present blip must not reset.
+  private func isArmedOrLocked(_ state: PresenceState) -> Bool {
+    switch state {
+    case .leaving, .locked: return true
+    default: return false
+    }
   }
 
   /// The RSSI (dBm) at or below which the watch counts as away. Derived from
