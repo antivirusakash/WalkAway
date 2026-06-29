@@ -279,6 +279,20 @@ struct MenuBarView: View {
       )
 
       Toggle("Pause while active", isOn: $settings.pauseWhileActive)
+
+      if settings.pauseWhileActive {
+        sliderRow(
+          title: "Confirm idle",
+          value: Binding(
+            get: { Double(settings.confirmIdleSeconds) },
+            set: { settings.confirmIdleSeconds = Int($0.rounded()) }
+          ),
+          range: 5 ... 120,
+          step: 5,
+          label: Formatters.seconds(settings.confirmIdleSeconds)
+        )
+      }
+
       scheduleSection
     }
   }

@@ -29,6 +29,16 @@ final class LockController: ObservableObject {
   private var hasLockedForCurrentAbsence = false
   private let lockRecheckInterval: TimeInterval = 2
 
+  // Startup grace. A fresh launch hasn't connected to the watch yet, so the
+  // first readings are nil ("no signal") even when the watch is right here.
+  // Without this guard a cold start arms away and locks within the grace while
+  // the watch sits on the desk (observed: lock 10 s after relaunch at 0.5 m).
+  // Suppress away-locking until we've seen the watch at least once, or a brief
+  // window since launch has elapsed (after which a genuine absence still locks).
+  private let startDate = Date()
+  private var hasSeenSignal = false
+  private let startupGraceSeconds: TimeInterval = 20
+
   // Tier A accuracy tuning.
   /// dB the signal must recover above the away cutoff before re-arming as
   /// present — asymmetric hysteresis for raw-RSSI mode only. In distance mode
@@ -127,6 +137,17 @@ final class LockController: ObservableObject {
     WALog.decide("evaluate rssi=\(rssi.map(String.init) ?? "nil") dist=\(distStr) limit=\(String(format: "%.1f", settings.lockDistanceMeters))m cutoff=\(cutoff)dBm reason=\(reason) away=\(isAway) awayRun=\(consecutiveAwayReadings)/\(awayConfirmReadings) presentRun=\(consecutivePresentReadings)/\(presentConfirmReadings) state=\(state.title)")
 
     if isAway {
+      // Startup grace: don't treat "no signal yet" as away while we're still
+      // connecting on a fresh launch. Once any present reading arrives, or the
+      // window elapses, fall through to normal away handling.
+      if !hasSeenSignal, Date().timeIntervalSince(startDate) < startupGraceSeconds {
+        if case .present = state {} else {
+          WALog.decide("away during startup grace — still connecting, not arming")
+        }
+        state = settings.hasSelectedDevice ? .connecting : .noDevice
+        consecutiveAwayReadings = 0
+        return
+      }
       // Schedule gate: outside the configured auto-lock window, never lock.
       // Hold present so nothing arms until the window opens.
       guard settings.isWithinLockSchedule() else {
@@ -153,6 +174,7 @@ final class LockController: ObservableObject {
       WALog.decide("present blip (\(consecutivePresentReadings)/\(presentConfirmReadings)) — holding \(state.title)")
     } else {
       state = .present
+      hasSeenSignal = true
       hasLockedForCurrentAbsence = false
     }
   }
@@ -248,11 +270,24 @@ final class LockController: ObservableObject {
     hasLockedForCurrentAbsence = true
     state = .locked
     metrics?.recordLock()
-    WALog.decide("LOCK screen — away confirmed, grace elapsed")
+    WALog.decide("LOCK screen — away confirmed, grace elapsed (idle=\(Int(ActivityMonitor.secondsSinceLastInput()))s displayAsleep=\(ActivityMonitor.isDisplayAsleep()) hasSeenSignal=\(hasSeenSignal))")
   }
 
+  /// Mac-local presence fusion layered on top of the BLE away signal. The BLE
+  /// reading is noisy (the watch throttles its radio), so before locking we
+  /// confirm against signals that can't be faked by a glitchy advertisement:
+  ///
+  ///   • display asleep  → the user is plainly not at the screen → lock now,
+  ///     don't wait for the idle window.
+  ///   • display awake   → require `confirmIdleSeconds` with no keyboard/mouse
+  ///     input before locking, so a stray BLE drop while you sit reading at the
+  ///     desk can't trigger a false lock. Any recent input defers the lock.
+  ///
+  /// Only active while "Pause while active" is on (the default).
   private func shouldDeferForUserActivity() -> Bool {
-    settings.pauseWhileActive && ActivityMonitor.isUserActive()
+    guard settings.pauseWhileActive else { return false }
+    if ActivityMonitor.isDisplayAsleep() { return false }
+    return ActivityMonitor.secondsSinceLastInput() < TimeInterval(settings.confirmIdleSeconds)
   }
 
   private func deferredDeadline(from now: Date) -> Date {

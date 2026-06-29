@@ -61,6 +61,15 @@ final class SettingsStore: ObservableObject {
     didSet { defaults.set(pauseWhileActive, forKey: Keys.pauseWhileActive) }
   }
 
+  /// While "Pause while active" is on and the display is awake, require this
+  /// many seconds with no keyboard/mouse input before an auto-lock is allowed.
+  /// Positive "the user actually left" evidence that a noisy BLE away reading
+  /// can't fake — stops false locks while you sit at the desk. Bypassed the
+  /// instant the display sleeps (you're clearly not at the screen then).
+  @Published var confirmIdleSeconds: Int {
+    didSet { defaults.set(confirmIdleSeconds, forKey: Keys.confirmIdleSeconds) }
+  }
+
   @Published var lockOnBluetoothUnavailable: Bool {
     didSet { defaults.set(lockOnBluetoothUnavailable, forKey: Keys.lockOnBluetoothUnavailable) }
   }
@@ -98,6 +107,7 @@ final class SettingsStore: ObservableObject {
     self.graceSeconds = defaults.object(forKey: Keys.graceSeconds) as? Int ?? 5
     self.noSignalTimeout = defaults.object(forKey: Keys.noSignalTimeout) as? Int ?? 5
     self.pauseWhileActive = defaults.object(forKey: Keys.pauseWhileActive) as? Bool ?? true
+    self.confirmIdleSeconds = defaults.object(forKey: Keys.confirmIdleSeconds) as? Int ?? 20
     self.lockOnBluetoothUnavailable = defaults.object(forKey: Keys.lockOnBluetoothUnavailable) as? Bool ?? false
     self.lockScheduleEnabled = defaults.object(forKey: Keys.lockScheduleEnabled) as? Bool ?? false
     self.lockScheduleStartMinutes = defaults.object(forKey: Keys.lockScheduleStartMinutes) as? Int ?? 9 * 60
@@ -200,6 +210,7 @@ private enum Keys {
   static let graceSeconds = "graceSeconds"
   static let noSignalTimeout = "noSignalTimeout"
   static let pauseWhileActive = "pauseWhileActive"
+  static let confirmIdleSeconds = "confirmIdleSeconds"
   static let lockOnBluetoothUnavailable = "lockOnBluetoothUnavailable"
   static let reliabilityDefaultsV1 = "reliabilityDefaultsV1"
   static let distanceDefaultV2 = "distanceDefaultV2"
