@@ -225,7 +225,7 @@ final class ProximityMonitor: NSObject, ObservableObject {
           if let rssi = device.rssi {
             self.pushRSSI(rssi)
           } else {
-            self.clearRSSI()
+            self.markSignalLost()
             if self.settings.lockWhenRSSIMissing {
               self.lockController.evaluate(rssi: nil, reason: .noSignal)
             } else {
@@ -298,11 +298,25 @@ final class ProximityMonitor: NSObject, ObservableObject {
     lastRSSIDate = nil
   }
 
+  /// Mark the live signal lost for the UI and poll cadence WITHOUT discarding
+  /// the smoothing window. Use on transient no-signal blips (timeouts, a single
+  /// missing reading). Wiping `samples` here was a false-lock trigger: the watch
+  /// throttles its radio and emits a depressed RSSI (~the away cutoff) instead
+  /// of dropping cleanly. With history intact that reading is outlier-rejected;
+  /// after a wipe it becomes the sole sample and smooths straight to the cutoff,
+  /// arming a lock while the watch is on the desk. The window ages out on its
+  /// own (sampleMaxAge) in pushRSSI, so a genuine departure still locks; only
+  /// hard disconnect / device-change calls clearRSSI() to reset fully.
+  private func markSignalLost() {
+    smoothedRSSI = nil
+    lastRSSIDate = nil
+  }
+
   private func evaluateMissingSystemDevice() {
     let now = Date()
     let lastSeen = lastSystemDeviceSeenDate ?? systemBluetoothPollingStartDate
     if now.timeIntervalSince(lastSeen) >= TimeInterval(settings.noSignalTimeout) {
-      clearRSSI()
+      markSignalLost()
       lockController.evaluate(rssi: nil, reason: .noSignal)
     }
   }
@@ -317,7 +331,7 @@ final class ProximityMonitor: NSObject, ObservableObject {
 
     if let lastSeen = lastSystemDeviceSeenDate,
        now.timeIntervalSince(lastSeen) < TimeInterval(settings.noSignalTimeout) {
-      clearRSSI()
+      markSignalLost()
       isSelectedSystemDeviceVisible = true
       if settings.lockWhenRSSIMissing {
         lockController.evaluate(rssi: nil, reason: .noSignal)
@@ -333,7 +347,7 @@ final class ProximityMonitor: NSObject, ObservableObject {
     }
 
     isSelectedSystemDeviceVisible = false
-    clearRSSI()
+    markSignalLost()
     lockController.evaluate(rssi: nil, reason: .noSignal)
   }
 
