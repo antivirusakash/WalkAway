@@ -60,6 +60,20 @@ final class LockController: ObservableObject {
   /// Run of consecutive present readings (resets on any away reading).
   private var consecutivePresentReadings = 0
 
+  /// A genuine walk-away slides RSSI down in small steps as you move; the
+  /// watch's radio throttle drops it off a cliff (~25 dB in one reading) while
+  /// the watch sits on the desk and you stop touching the Mac. An away run that
+  /// *enters* as a cliff from the last present level is therefore suspect: it
+  /// must not fire the lock on depressed RSSI alone — only genuine signal loss
+  /// (the watch leaving BLE range → nil) or a sleeping display confirms it.
+  /// Gradual departures never trip the cliff, so distance locking still works.
+  private let cliffDropDB = 18
+  /// Last present (in-range) smoothed RSSI, the baseline a cliff is measured
+  /// from. nil until the first present reading.
+  private var lastPresentRSSI: Int?
+  /// True while the current away run began as a cliff drop (suspected throttle).
+  private var awayRunIsSuspectThrottle = false
+
   init(settings: SettingsStore, locker: Locker, metrics: MetricsMonitor? = nil) {
     self.settings = settings
     self.locker = locker
@@ -95,7 +109,8 @@ final class LockController: ObservableObject {
   func bluetoothUnavailable(_ message: String) {
     state = .bluetoothUnavailable(message)
     guard settings.lockOnBluetoothUnavailable, settings.isWithinLockSchedule() else { return }
-    beginOrContinueLeaving(now: Date())
+    // Bluetooth off is a genuine loss, not a throttled reading — lock normally.
+    beginOrContinueLeaving(now: Date(), reason: .noSignal)
   }
 
   func disconnected() {
@@ -122,9 +137,18 @@ final class LockController: ObservableObject {
     if isAway {
       consecutiveAwayReadings += 1
       consecutivePresentReadings = 0
+      if consecutiveAwayReadings == 1 {
+        // Classify the run at its first away reading: cliff drop from the last
+        // present level (still an RSSI reading, not a signal loss) = suspect
+        // throttle. A loss (nil) is never a throttle artifact, so never suspect.
+        awayRunIsSuspectThrottle = reason == .rssi
+          && (rssi.map { (lastPresentRSSI ?? $0) - $0 >= cliffDropDB } ?? false)
+      }
     } else {
       consecutivePresentReadings += 1
       consecutiveAwayReadings = 0
+      awayRunIsSuspectThrottle = false
+      if let rssi { lastPresentRSSI = rssi }
     }
     let cutoff = awayCutoffRSSI()
     let distStr = rssi.map {
@@ -161,7 +185,7 @@ final class LockController: ObservableObject {
       }
       // Debounce: require N consecutive away readings before arming.
       guard consecutiveAwayReadings >= awayConfirmReadings else { return }
-      beginOrContinueLeaving(now: Date())
+      beginOrContinueLeaving(now: Date(), reason: reason)
     } else if isArmedOrLocked(state), consecutivePresentReadings < presentConfirmReadings {
       // Armed (leaving) OR already locked, and this reading is "present". A lone
       // present blip must NOT reset the state: while leaving it would cancel a
@@ -235,7 +259,7 @@ final class LockController: ObservableObject {
     return settings.rssiThreshold
   }
 
-  private func beginOrContinueLeaving(now: Date) {
+  private func beginOrContinueLeaving(now: Date, reason: AwayReason = .rssi) {
     if hasLockedForCurrentAbsence {
       return
     }
@@ -263,6 +287,17 @@ final class LockController: ObservableObject {
       state = .leaving(deadline: deferredDeadline(from: now))
       metrics?.recordDefer()
       WALog.decide("grace elapsed but user active → defer lock")
+      return
+    }
+
+    // Throttle guard: this away run entered as a cliff and is still only a
+    // depressed RSSI reading (the watch is visible, not lost) with the display
+    // awake — the radio-throttle false-lock signature. Hold in Leaving and wait
+    // for a trustworthy confirmation: the watch leaving range (reason becomes
+    // .noSignal) or the display sleeping both bypass this guard and lock.
+    if awayRunIsSuspectThrottle, reason == .rssi, !ActivityMonitor.isDisplayAsleep() {
+      state = .leaving(deadline: deferredDeadline(from: now))
+      WALog.decide("suspect radio-throttle (cliff drop, still visible) → hold, await signal loss or display sleep")
       return
     }
 
